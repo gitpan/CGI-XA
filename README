@@ -18,11 +18,32 @@ accepts all the changes and continues with his excellent work.
     no exports
     no cgi-lib.pl compatibility
     no "Q" namespace
+    inlined rearrange
 
 =head2 BUGS
 
 With this code I cannot use the file upload feature as expected. Only
 the first file upload within a the life of a server is guaranteed to
-work. Also ok are small files < 2k (haven't tested the exact limit
+work. Also ok are small files < 15k (haven't tested the exact limit
 where things go astray).
+
+=cut
+
+This code is faster than Lincoln's too:
+
+# Benchmark: timing 1000 iterations of cginamed, cgipos, fastnamed, fastpos, xanamed, xapos...
+#   cginamed:  6 secs ( 5.85 usr  0.08 sys =  5.93 cpu)
+#     cgipos:  4 secs ( 3.43 usr  0.02 sys =  3.45 cpu)
+#  fastnamed:  4 secs ( 3.38 usr  0.01 sys =  3.39 cpu)
+#    fastpos:  3 secs ( 3.06 usr  0.01 sys =  3.07 cpu)
+#    xanamed:  7 secs ( 5.76 usr  0.09 sys =  5.85 cpu)
+#      xapos:  4 secs ( 3.27 usr  0.05 sys =  3.32 cpu)
+
+And with the small test script in the eg/ directory (A CGI that runs a
+counter and a time and a textfield, I could run 100 loops in 23
+seconds on a Indy 100 MHz, not a terrific fast machine.
+
+
+Enjoy,
+Andreas, 18 Aug, 1996
 

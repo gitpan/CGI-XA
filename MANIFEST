@@ -2,6 +2,7 @@ Changes
 MANIFEST
 Makefile.PL
 README
+eg/rgy-cgi-pm2.pl        Small demo
 lib/CGI/XA.pm            reworked CGI.pm
 lib/Apache/CGI.pm        a compatible Apache::CGI
 test.pl

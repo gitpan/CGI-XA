@@ -3,7 +3,7 @@ package CGI::XA;
 use strict;
 use vars qw(@ISA $SL $CRLF $VERSION $Revision $DefaultClass);
 
-$VERSION = '0.22301-alpha';
+$VERSION = '0.22302-alpha';
 
 # Preloaded methods go here.
 
@@ -23,7 +23,7 @@ use FileHandle;
 # Copyright 1996, Andreas K"onig
 # My changes are described in the man page.
 
-$Revision = q$Id: XA.pm,v 1.4 1996/08/17 21:58:45 k Exp k $;
+$Revision = q$Id: XA.pm,v 1.7 1996/08/18 15:00:23 k Exp k $;
 
 # This is the default class for the CGI::XA object to use when all else fails.
 $DefaultClass ||= 'CGI::XA';
@@ -308,13 +308,8 @@ sub add_parameter {
 }
 
 sub all_parameters {
-    my $self = shift;
-    return () unless defined($self) && $self->{'.parameters'};
-    return () unless @{$self->{'.parameters'}};
-    return @{$self->{'.parameters'}};
+    return @{shift->{'.parameters'}||[]};
 }
-
-
 
 #### Method as_string
 #
@@ -342,15 +337,39 @@ sub keywords {
 ####
 # Append a new value to an existing query
 ####
+#sub append {
+#    my($self,@p) = @_;
+#    my($name,$value) = $self->rearrange(['NAME',['VALUE','VALUES']],@p);
+#    my(@values) = defined($value) ? (ref($value) ? @{$value} : $value) : ();
+#    if (@values) {
+#	$self->add_parameter($name);
+#	push(@{$self->{$name}},@values);
+#    }
+#    return $self->param($name);
+#}
+#append                 name value
+ #                          ['NAME',['VALUE','VALUES']]
+
 sub append {
-    my($self,@p) = @_;
-    my($name,$value) = $self->rearrange(['NAME',['VALUE','VALUES']],@p);
-    my(@values) = defined($value) ? (ref($value) ? @{$value} : $value) : ();
-    if (@values) {
-	$self->add_parameter($name);
-	push(@{$self->{$name}},@values);
+    my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+	%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;
+	}
+        $p{value} ||= $p{'values'};
+     } else {
+	@p{qw/ name value/} = @p;
     }
-    return $self->param($name);
+    my(@values) = defined($p{value}) ? (ref($p{value}) ? @{$p{value}} : $p{value}) : ();
+    if (@values) {
+	$self->add_parameter($p{name});
+	push(@{$self->{$p{name}}},@values);
+    }
+    return $self->param($p{name});
 }
 
 #### Method: delete_all
@@ -393,11 +412,12 @@ sub dump {
     return '<UL></UL>' unless $self->param;
     push(@result,"<UL>");
     foreach $param ($self->param) {
-	my($name)=$self->escapeHTML($param);
-	push(@result,"<LI><STRONG>$param</STRONG>");
+	my($name) = $param;
+	$self->fastescapeHTML($name);
+	push(@result,"<LI><STRONG>$name</STRONG>");
 	push(@result,"<UL>");
 	foreach $value ($self->param($param)) {
-	    $value = $self->escapeHTML($value);
+	    $self->fastescapeHTML($value);
 	    push(@result,"<LI>$value");
 	}
 	push(@result,"</UL>");
@@ -432,19 +452,19 @@ sub save {
 #
 ####
 sub header {
-    my($self,@p) = @_;
+   my($self,@p) = @_;
     my(@header);
 
     my($type,$status,$cookie,$target,$expires,@other) =
-	$self->rearrange(['TYPE','STATUS',['COOKIE','COOKIES'],'TARGET','EXPIRES'],@p);
+	 $self->rearrange(['TYPE','STATUS',['COOKIE','COOKIES'],'TARGET','EXPIRES'],@p);
 
     # rearrange() was designed for the HTML portion, so we
     # need to fix it up a little.
     foreach (@other) {
-	next unless my($header,$value) = /(\S+)=(.+)/;
-	substr($header,1,1000)=~tr/A-Z/a-z/;
-	($value) = $value =~ /^"(.*)"$/;
-	$_ = "$header: $value";
+	 next unless my($header,$value) = /(\S+)=(.+)/;
+	 substr($header,1,1000)=~tr/A-Z/a-z/;
+	 ($value) = $value =~ /^"(.*)"$/;
+	 $_ = "$header: $value";
     }
 
     $type = $type || 'text/html';
@@ -453,10 +473,10 @@ sub header {
     push(@header,"Window-target: $target") if $target;
     # push all the cookies -- there may be several
     if ($cookie) {
-	my(@cookie) = ref($cookie) ? @{$cookie} : $cookie;
-	foreach (@cookie) {
-	    push(@header,"Set-cookie: $_");
-	}
+	 my(@cookie) = ref($cookie) ? @{$cookie} : $cookie;
+	 foreach (@cookie) {
+	     push(@header,"Set-cookie: $_");
+	 }
     }
     push(@header,"Expires: " . &expires($expires)) if $expires;
     push(@header,"Pragma: no-cache") if $self->cache();
@@ -466,7 +486,6 @@ sub header {
     my $header = join($CRLF,@header);
     return $header . "$CRLF$CRLF";
 }
-
 
 #### Method: cache
 # Control whether header() will produce the no-cache
@@ -522,8 +541,9 @@ sub start_html {
 
     # strangely enough, the title needs to be escaped as HTML
     # while the author needs to be escaped as a URL
-    $title = $self->escapeHTML($title || 'Untitled Document');
-    $author = $self->escapeHTML($author);
+    $self->fastescapeHTML($title);
+    $title ||= 'Untitled Document';
+    $self->fastescapeHTML($author);
     my(@result);
     push(@result,"<HTML><HEAD><TITLE>$title</TITLE>");
     push(@result,"<LINK REV=MADE HREF=\"mailto:$author\">") if $author;
@@ -619,7 +639,9 @@ sub endform {
 # Returns:
 #   A string containing a <INPUT TYPE="text"> field
 #
-sub textfield {
+
+# renamed for benchmark
+sub oldtextfield {
     my($self,@p) = @_;
     my($name,$default,$size,$maxlength,$override,@other) =
 	$self->rearrange(['NAME',['DEFAULT','VALUE'],'SIZE','MAXLENGTH',['OVERRIDE','FORCE']],@p);
@@ -627,14 +649,55 @@ sub textfield {
     my $current = $override ? $default :
 	(defined($self->param($name)) ? $self->param($name) : $default);
 
-    $current = defined($current) ? $self->escapeHTML($current) : '';
-    $name = defined($name) ? $self->escapeHTML($name) : '';
+    $self->fastescapeHTML($current);
+    $self->fastescapeHTML($name);
     my($s) = defined($size) ? qq/ SIZE=$size/ : '';
     my($m) = defined($maxlength) ? qq/ MAXLENGTH=$maxlength/ : '';
     my($other) = join(" ",@other);
     return qq/<INPUT TYPE="text" NAME="$name" VALUE="$current"$s$m$other>/;
 }
 
+sub textfield {
+    my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+	%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;;
+	}
+	# DEFAULT takes precedence over VALUE
+	$p{default} ||= $p{value};
+	$p{override}||= $p{force};
+    } else {
+	@p{qw/name default size maxlength override other/} = @p;
+    }
+
+    my $current = $p{override} ? $p{default} :
+	(defined($self->param($p{name})) ? $self->param($p{name}) : $p{default});
+
+    $self->fastescapeHTML($current);
+    $self->fastescapeHTML($p{name});
+    $p{other} ||= ''; # we've changed semantics for
+                                      # @other. Only one excess
+                                      # argument is recognized now
+    my($s) = defined($p{size}) ? qq/ SIZE=$p{size}/ : '';
+    my($m) = defined($p{maxlength}) ? qq/ MAXLENGTH=$p{maxlength}/ : '';
+    return qq/<INPUT TYPE="text" NAME="$p{name}" VALUE="$current"$s$m$p{other}>/;
+}
+
+# A.K.: I think I saw this in libwww somewhere -- should be replaced
+# some day when we know about the fate of this library
+sub fastescapeHTML {
+    $_[1] ||= '';
+    return unless $_[1];
+    return if $_[0]->{'dontescape'};
+    $_[1] =~ s/&/&amp;/g;
+    $_[1] =~ s/\"/&quot;/g;
+    $_[1] =~ s/>/&gt;/g;
+    $_[1] =~ s/</&lt;/g;
+}
 
 #### Method: filefield
 # Parameters:
@@ -644,21 +707,50 @@ sub textfield {
 # Returns:
 #   A string containing a <INPUT TYPE="text"> field
 #
+#sub filefield {
+#    my($self,@p) = @_;
+#
+#    my($name,$default,$size,$maxlength,$override,@other) =
+#	 $self->rearrange(['NAME',['DEFAULT','VALUE'],'SIZE','MAXLENGTH',['OVERRIDE','FORCE']],@p);
+#
+#    my $current = $override ? $default :
+#	 (defined($self->param($name)) ? $self->param($name) : $default);
+#
+#    $self->fastescapeHTML($name);
+#    my($s) = defined($size) ? qq/ SIZE=$size/ : '';
+#    my($m) = defined($maxlength) ? qq/ MAXLENGTH=$maxlength/ : '';
+#    $self->fastescapeHTML($current);
+#    my($other) =join(" ",@other);
+#    return qq/<INPUT TYPE="file" NAME="$name" VALUE="$current"$s$m$other>/;
+#}
+#
+#filefield              name default size maxlength override other
+ #                          ['NAME',['DEFAULT','VALUE'],'SIZE','MAXLENGTH',['OVERRIDE','FORCE']]
+
 sub filefield {
-    my($self,@p) = @_;
+    my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+	%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;;
+	}
+        $p{default} ||= $p{value};
+        $p{override} ||= $p{force};
+     } else {
+	@p{qw/ name default size maxlength override other/} = @p;
+    }
+    my $current = $p{override} ? $p{default} :
+	(defined($self->param($p{name})) ? $self->param($p{name}) : $p{default});
 
-    my($name,$default,$size,$maxlength,$override,@other) =
-	$self->rearrange(['NAME',['DEFAULT','VALUE'],'SIZE','MAXLENGTH',['OVERRIDE','FORCE']],@p);
-
-    my $current = $override ? $default :
-	(defined($self->param($name)) ? $self->param($name) : $default);
-
-    $name = defined($name) ? $self->escapeHTML($name) : '';
-    my($s) = defined($size) ? qq/ SIZE=$size/ : '';
-    my($m) = defined($maxlength) ? qq/ MAXLENGTH=$maxlength/ : '';
-    $current = defined($current) ? $self->escapeHTML($current) : '';
-    my($other) =join(" ",@other);
-    return qq/<INPUT TYPE="file" NAME="$name" VALUE="$current"$s$m$other>/;
+    $self->fastescapeHTML($p{name});
+    my($s) = defined($p{size}) ? qq/ SIZE=$p{size}/ : '';
+    my($m) = defined($p{maxlength}) ? qq/ MAXLENGTH=$p{maxlength}/ : '';
+    $self->fastescapeHTML($current);
+    $p{other} ||= '';
+    return qq/<INPUT TYPE="file" NAME="$p{name}" VALUE="$current"$s$m$p{other}>/;
 }
 
 
@@ -682,8 +774,8 @@ sub password_field {
     my($current) =  $override ? $default :
 	(defined($self->param($name)) ? $self->param($name) : $default);
 
-    $name = defined($name) ? $self->escapeHTML($name) : '';
-    $current = defined($current) ? $self->escapeHTML($current) : '';
+    $self->fastescapeHTML($name);
+    $self->fastescapeHTML($current);
     my($s) = defined($size) ? qq/ SIZE=$size/ : '';
     my($m) = defined($maxlength) ? qq/ MAXLENGTH=$maxlength/ : '';
     my($other) = join(" ",@other);
@@ -710,8 +802,8 @@ sub textarea {
     my($current)= $override ? $default :
 	(defined($self->param($name)) ? $self->param($name) : $default);
 
-    $name = defined($name) ? $self->escapeHTML($name) : '';
-    $current = defined($current) ? $self->escapeHTML($current) : '';
+    $self->fastescapeHTML($name);
+    $self->fastescapeHTML($current);
     my($r) = $rows ? " ROWS=$rows" : '';
     my($c) = $cols ? " COLS=$cols" : '';
     my($other) = join(' ',@other);
@@ -729,25 +821,57 @@ sub textarea {
 # Returns:
 #   A string containing a <INPUT TYPE="button"> tag
 ####
+#
+# A.K. My impression is, this was completely broken. I've corrected what I could guess.
+#sub button {
+#    my($self,@p) = @_;
+#
+#    my($label,$value,$script,@other) = $self->rearrange(['NAME',['VALUE','LABEL'],
+#							  ['ONCLICK','SCRIPT']],@p);
+#
+#    $self->fastescapeHTML($label);
+#    $self->fastescapeHTML($value);
+#    $self->fastescapeHTML($script);
+#
+#    my($name) = '';
+#    $name = qq/ NAME="$label"/ if $label;
+#    $value = $value || $label;
+#    my($val) = '';
+#    $val = qq/ VALUE="$value"/ if $value;
+#    $script = qq/ ONCLICK="$script"/ if $script;
+#    my($other) =join(" ",@other);
+#    return qq/<INPUT TYPE="button"$name$val$script$other>/;
+#}
+#button                 label value script other
+ #                          ['NAME',['VALUE','LABEL'], ['ONCLICK','SCRIPT']]
+
 sub button {
-    my($self,@p) = @_;
+    my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+	%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;;
+	}
+        $p{value} ||= $p{label};
+        $p{onclick} ||= $p{script};
+     } else {
+	@p{qw/name value onclick other/} = @p;
+    }
+    $self->fastescapeHTML($p{name});
+    $self->fastescapeHTML($p{value});
+    $self->fastescapeHTML($p{onclick});
+    $p{other} ||= '';
 
-    my($label,$value,$script,@other) = $self->rearrange(['NAME',['VALUE','LABEL'],
-							 ['ONCLICK','SCRIPT']],@p);
-
-    $label=$self->escapeHTML($label);
-    $value=$self->escapeHTML($value);
-    $script=$self->escapeHTML($script);
-
-    my($name) = '';
-    $name = qq/ NAME="$label"/ if $label;
-    $value = $value || $label;
-    my($val) = '';
-    $val = qq/ VALUE="$value"/ if $value;
-    $script = qq/ ONCLICK="$script"/ if $script;
-    my($other) =join(" ",@other);
-    return qq/<INPUT TYPE="button"$name$val$script$other>/;
+    $p{name} = qq/ NAME="$p{name}"/ if $p{name};
+    $p{value} = qq/ VALUE="$p{value}"/ if $p{value};
+    $p{onclick} = qq/ ONCLICK="$p{onclick}"/ if $p{onclick};
+    return qq/<INPUT TYPE="button"$p{name}$p{value}$p{onclick}$p{other}>/;
 }
+
+
 
 #### Method: submit
 # Create a "submit query" button.
@@ -763,8 +887,8 @@ sub submit {
 
     my($label,$value,@other) = $self->rearrange(['NAME',['VALUE','LABEL']],@p);
 
-    $label=$self->escapeHTML($label);
-    $value=$self->escapeHTML($value);
+    $self->fastescapeHTML($label);
+    $self->fastescapeHTML($value);
 
     my($name) = ' NAME=".submit"';
     $name = qq/ NAME="$label"/ if $label;
@@ -785,7 +909,7 @@ sub submit {
 sub reset {
     my($self,@p) = @_;
     my($label,@other) = $self->rearrange(['NAME'],@p);
-    $label=$self->escapeHTML($label);
+    $self->fastescapeHTML($label);
     my($value) = defined($label) ? qq/ VALUE="$label"/ : '';
     my($other) = join(' ',@other);
     return qq/<INPUT TYPE="reset"$value$other>/;
@@ -802,17 +926,41 @@ sub reset {
 # and tells it to ERASE the current query string so that your defaults
 # are used again!
 ####
+#sub defaults {
+#    my($self,@p) = @_;
+#
+#    my($label,@other) = $self->rearrange([['NAME','VALUE']],@p);
+#
+#    $self->fastescapeHTML($label);
+#    $label ||= "Defaults";
+#    my($value) = qq/ VALUE="$label"/;
+#    my($other) = join(' ',@other);
+#    return qq/<INPUT TYPE="submit" NAME=".defaults"$value$other>/;
+#}
+##defaults               label other
+ #                          [['NAME','VALUE']]
+
 sub defaults {
-    my($self,@p) = @_;
-
-    my($label,@other) = $self->rearrange([['NAME','VALUE']],@p);
-
-    $label=$self->escapeHTML($label);
-    $label = $label || "Defaults";
-    my($value) = qq/ VALUE="$label"/;
-    my($other) = join(' ',@other);
-    return qq/<INPUT TYPE="submit" NAME=".defaults"$value$other>/;
+    my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+	%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;;
+	}
+        $p{name} ||= $p{value};
+     } else {
+	@p{qw/label other/} = @p;
+    }
+    $self->fastescapeHTML($p{label});
+    $p{label} ||= "Defaults";
+    my($value) = qq/ VALUE="$p{label}"/;
+    $p{other} ||= '';
+    return qq/<INPUT TYPE="submit" NAME=".defaults"$value$p{other}>/;
 }
+
 
 #### Method: checkbox
 # Create a checkbox that is not logically linked to any others.
@@ -826,28 +974,61 @@ sub defaults {
 # Returns:
 #   A string containing a <INPUT TYPE="checkbox"> field
 ####
+#sub checkbox {
+#    my($self,@p) = @_;
+#
+#    my($name,$checked,$value,$label,$override,@other) =
+#	 $self->rearrange(['NAME',['CHECKED','SELECTED','ON'],'VALUE','LABEL',['OVERRIDE','FORCE']],@p);
+#
+#    if (!$override && $self->inited) {
+#	 $checked = $self->param($name) ? ' CHECKED' : '';
+#	 $value = defined $self->param($name) ? $self->param($name) :
+#	     (defined $value ? $value : 'on');
+#    } else {
+#	 $checked = defined($checked) ? ' CHECKED' : '';
+#	 $value = defined $value ? $value : 'on';
+#    }
+#    my($the_label) = defined $label ? $label : $name;
+#    $self->fastescapeHTML($name);
+#    $self->fastescapeHTML($value);
+#    $self->fastescapeHTML($the_label);
+#    my($other) = join(" ",@other);
+#    return <<END;
+#<INPUT TYPE="checkbox" NAME="$name" VALUE="$value"$checked$other>$the_label
+#END
+#}
+#checkbox               name checked value label override other
+#                          ['NAME',['CHECKED','SELECTED','ON'],'VALUE','LABEL',['OVERRIDE','FORCE']]
+
 sub checkbox {
-    my($self,@p) = @_;
-
-    my($name,$checked,$value,$label,$override,@other) =
-	$self->rearrange(['NAME',['CHECKED','SELECTED','ON'],'VALUE','LABEL',['OVERRIDE','FORCE']],@p);
-
-    if (!$override && $self->inited) {
-	$checked = $self->param($name) ? ' CHECKED' : '';
-	$value = defined $self->param($name) ? $self->param($name) :
-	    (defined $value ? $value : 'on');
-    } else {
-	$checked = defined($checked) ? ' CHECKED' : '';
-	$value = defined $value ? $value : 'on';
+   my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+	%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;;
+	}
+        $p{checked} ||= $p{selected};
+        $p{checked} ||= $p{on};
+        $p{override} ||= $p{force};
+     } else {
+	@p{qw/ name checked value label override other/} = @p;
     }
-    my($the_label) = defined $label ? $label : $name;
-    $name = $self->escapeHTML($name);
-    $value = $self->escapeHTML($value);
-    $the_label = $self->escapeHTML($the_label);
-    my($other) = join(" ",@other);
-    return <<END;
-<INPUT TYPE="checkbox" NAME="$name" VALUE="$value"$checked$other>$the_label
-END
+    if (!$p{override} && $self->inited) {
+	$p{checked} = $self->param($p{name}) ? ' CHECKED' : '';
+	$p{value} = defined $self->param($p{name}) ? $self->param($p{name}) :
+	    (defined $p{value} ? $p{value} : 'on');
+    } else {
+	$p{checked} = defined($p{checked}) ? ' CHECKED' : '';
+	$p{value} = defined $p{value} ? $p{value} : 'on';
+    }
+    $self->fastescapeHTML($p{name});
+   $p{label} ||= $p{name};
+    $self->fastescapeHTML($p{value});
+    $p{other} ||= '';
+    return qq[<INPUT TYPE="checkbox" NAME="$p{name}" VALUE="$p{value}"$p{checked}$p{other}>$p{label}\n];
 }
 
 #### Method: checkbox_group
@@ -871,53 +1052,103 @@ END
 # Returns:
 #   An ARRAY containing a series of <INPUT TYPE="checkbox"> fields
 ####
+#sub checkbox_group {
+#    my($self,@p) = @_;
+#
+#    my($name,$values,$defaults,$linebreak,$labels,$rows,$columns,
+#	$rowheaders,$colheaders,$override,$nolabels,@other) =
+#	 $self->rearrange(['NAME',['VALUES','VALUE'],['DEFAULTS','DEFAULT'],
+#			   'LINEBREAK','LABELS','ROWS',['COLUMNS','COLS'],
+#			   'ROWHEADERS','COLHEADERS',
+#			   ['OVERRIDE','FORCE'],'NOLABELS'],@p);
+#
+#    my($checked,$break,$result,$label);
+#
+#    my(%checked) = $self->previous_or_default($name,$defaults,$override);
+#
+#    $break = $linebreak ? "<BR>" : '';
+#    $self->fastescapeHTML($name);
+#
+#    # Create the elements
+#    my(@elements);
+#    my(@values) = $values ? @$values : $self->param($name);
+#    my($other) = join(" ",@other);
+#    foreach (@values) {
+#	 $checked = $checked{$_} ? ' CHECKED' : '';
+#	 $label = '';
+#	 unless (defined($nolabels) && $nolabels) {
+#	     $label = $_;
+#	     $label = $labels->{$_} if defined($labels) && $labels->{$_};
+#	     $self->fastescapeHTML($label);
+#	 }
+#	 $self->fastescapeHTML($_);
+#	 push(@elements,qq/<INPUT TYPE="checkbox" NAME="$name" VALUE="$_"$checked$other>${label} ${break}/);
+#    }
+#    return wantarray ? @elements : join('',@elements) unless $columns;
+#    return _tableize($rows,$columns,$rowheaders,$colheaders,@elements);
+#}
+#
+##checkbox_group         name values defaults linebreak labels rows columns   rowheaders
+ #                      colheaders override nolabels other
+ #                          ['NAME',['VALUES','VALUE'],['DEFAULTS','DEFAULT'], 'LINEBREAK','LABELS','ROWS',[
+ #                          'COLUMNS','COLS'], 'ROWHEADERS','COLHEADERS', ['OVERRIDE','FORCE'],'NOLABELS']
+
 sub checkbox_group {
-    my($self,@p) = @_;
-
-    my($name,$values,$defaults,$linebreak,$labels,$rows,$columns,
-       $rowheaders,$colheaders,$override,$nolabels,@other) =
-	$self->rearrange(['NAME',['VALUES','VALUE'],['DEFAULTS','DEFAULT'],
-			  'LINEBREAK','LABELS','ROWS',['COLUMNS','COLS'],
-			  'ROWHEADERS','COLHEADERS',
-			  ['OVERRIDE','FORCE'],'NOLABELS'],@p);
-
+    my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;;
+	}
+        $p{values} ||= $p{value};
+        $p{defaults} ||= $p{default};
+        $p{columns} ||= $p{cols};
+       $p{override} ||= $p{force};
+     } else {
+       @p{qw/ name values defaults linebreak labels rows columns 
+              rowheaders colheaders override nolabels other/} = @p;
+    }
     my($checked,$break,$result,$label);
 
-    my(%checked) = $self->previous_or_default($name,$defaults,$override);
+    my(%checked) = $self->previous_or_default($p{name},$p{defaults},$p{override});
 
-    $break = $linebreak ? "<BR>" : '';
-    $name=$self->escapeHTML($name);
+    $break = $p{linebreak} ? "<BR>" : '';
+    $self->fastescapeHTML($p{name});
 
-    # Create the elements
+    
     my(@elements);
-    my(@values) = $values ? @$values : $self->param($name);
-    my($other) = join(" ",@other);
+    my(@values) = $p{values} ? @{$p{values}} : $self->param($p{name});
+    $p{other} ||= '';
     foreach (@values) {
 	$checked = $checked{$_} ? ' CHECKED' : '';
 	$label = '';
-	unless (defined($nolabels) && $nolabels) {
+	unless (defined($p{nolabels}) && $p{nolabels}) {
 	    $label = $_;
-	    $label = $labels->{$_} if defined($labels) && $labels->{$_};
-	    $label = $self->escapeHTML($label);
+	    $label = $p{labels}->{$_} if defined($p{labels}) && $p{labels}->{$_};
+	    $self->fastescapeHTML($label);
 	}
-	$_ = $self->escapeHTML($_);
-	push(@elements,qq/<INPUT TYPE="checkbox" NAME="$name" VALUE="$_"$checked$other>${label} ${break}/);
+	$self->fastescapeHTML($_);
+	push(@elements,qq/<INPUT TYPE="checkbox" NAME="$p{name}" VALUE="$_"$checked$p{other}>${label} ${break}/);
     }
-    return wantarray ? @elements : join('',@elements) unless $columns;
-    return _tableize($rows,$columns,$rowheaders,$colheaders,@elements);
+    return wantarray ? @elements : join('',@elements) unless $p{columns};
+    return _tableize($p{rows},$p{columns},$p{rowheaders},$p{colheaders},@elements);
 }
 
 # Escape HTML -- used internally
-sub escapeHTML {
-    my($self,$toencode) = @_;
-    return undef unless defined($toencode);
-    return $toencode if $self->{'dontescape'};
-    $toencode=~s/&/&amp;/g;
-    $toencode=~s/\"/&quot;/g;
-    $toencode=~s/>/&gt;/g;
-    $toencode=~s/</&lt;/g;
-    return $toencode;
-}
+# A.K. replaced it by fastescapeHTML which in turn is stolen from libwww
+#sub escapeHTML {
+#    my($self,$toencode) = @_;
+#    return undef unless defined($toencode);
+#    return $toencode if $self->{'dontescape'};
+#    $toencode=~s/&/&amp;/g;
+#    $toencode=~s/\"/&quot;/g;
+#    $toencode=~s/>/&gt;/g;
+#    $toencode=~s/</&lt;/g;
+#    return $toencode;
+#}
 
 
 # Internal procedure - don't use
@@ -977,7 +1208,7 @@ sub radio_group {
     }
     # If no check array is specified, check the first by default
     $checked = $values->[0] unless $checked;
-    $name=$self->escapeHTML($name);
+    $self->fastescapeHTML($name);
 
     my(@elements);
     my(@values) = $values ? @$values : $self->param($name);
@@ -989,9 +1220,9 @@ sub radio_group {
 	unless (defined($nolabels) && $nolabels) {
 	    $label = $_;
 	    $label = $labels->{$_} if defined($labels) && $labels->{$_};
-	    $label = $self->escapeHTML($label);
+	    $self->fastescapeHTML($label);
 	}
-	$_=$self->escapeHTML($_);
+	$self->fastescapeHTML($_);
 	push(@elements,qq/<INPUT TYPE="radio" NAME="$name" VALUE="$_"$checkit$other>${label} ${break}/);
     }
     return wantarray ? @elements : join('',@elements) unless $columns;
@@ -1024,7 +1255,7 @@ sub popup_menu {
     } else {
 	$selected = $default;
     }
-    $name=$self->escapeHTML($name);
+    $self->fastescapeHTML($name);
     my($other) = join(" ",@other);
 
     my(@values) = $values ? @$values : $self->param($name);
@@ -1033,8 +1264,9 @@ sub popup_menu {
 	my($selectit) = defined($selected) ? ($selected eq $_ ? 'SELECTED' : '' ) : '';
 	my($label) = $_;
 	$label = $labels->{$_} if defined($labels) && $labels->{$_};
-	my($value) = $self->escapeHTML($_);
-	$label=$self->escapeHTML($label);
+	my($value) = $_;
+	$self->fastescapeHTML($value);
+	$self->fastescapeHTML($label);
 	$result .= "<OPTION $selectit VALUE=\"$value\">$label\n";
     }
 
@@ -1077,14 +1309,15 @@ sub scrolling_list {
     my($has_size) = $size ? " SIZE=$size" : '';
     my($other) = join(" ",@other);
 
-    $name=$self->escapeHTML($name);
+    $self->fastescapeHTML($name);
     $result = qq/<SELECT NAME="$name"$has_size$is_multiple$other>\n/;
     foreach (@values) {
 	my($selectit) = $selected{$_} ? 'SELECTED' : '';
 	my($label) = $_;
 	$label = $labels->{$_} if defined($labels) && $labels->{$_};
-	$label=$self->escapeHTML($label);
-	my($value)=$self->escapeHTML($_);
+	$self->fastescapeHTML($label);
+	my($value) = $_;
+	$self->fastescapeHTML($value);
 	$result .= "<OPTION $selectit VALUE=\"$value\">$label\n";
     }
     $result .= "</SELECT>\n";
@@ -1123,9 +1356,9 @@ sub hidden {
     my @prev = $self->param($name);
     @value = @prev if !$do_override && @prev;
 
-    $name=$self->escapeHTML($name);
+    $self->fastescapeHTML($name);
     foreach (@value) {
-	$_=$self->escapeHTML($_);
+	$self->fastescapeHTML($_);
 	push(@result,qq/<INPUT TYPE="hidden" NAME="$name" VALUE="$_">/);
     }
     return wantarray ? @result : join('',@result);
@@ -1148,7 +1381,7 @@ sub image_button {
 
     my($align) = $alignment ? " ALIGN=\U$alignment" : '';
     my($other) = join(" ",@other);
-    $name=$self->escapeHTML($name);
+    $self->fastescapeHTML($name);
     return qq/<INPUT TYPE="image" NAME="$name" SRC="$src"$align$other>/;
 }
 
@@ -1201,37 +1434,81 @@ sub url {
 #   -secure -> if true, cookie only passed through secure channel (optional)
 #   -expires -> expiry date in format Wdy, DD-Mon-YY HH:MM:SS GMT (optional)
 ####
+#sub cookie {
+#    my($self,@p) = @_;
+#    my($name,$value,$path,$domain,$secure,$expires) =
+#	 $self->rearrange(['NAME',['VALUE','VALUES'],'PATH','DOMAIN','SECURE','EXPIRES'],@p);
+#    # if no value is supplied, then we retrieve the
+#    # value of the cookie, if any.  For efficiency, we cache the parsed
+#    # cookie in our state variables.
+#    unless (defined($value)) {
+#	 unless ($self->{'.cookies'}) {
+#	     my(@pairs) = split("; ",$self->raw_cookie);
+#	     foreach (@pairs) {
+#		 my($key,$value) = split("=");
+#		 my(@values) = map unescape($_),split('&',$value);
+#		 $self->{'.cookies'}->{unescape($key)} = [@values];
+#	     }
+#	 }
+#	 return wantarray ? @{$self->{'.cookies'}->{$name}} : $self->{'.cookies'}->{$name}->[0];
+#    }
+#    my(@values);
+#
+#    # Pull out our parameters.
+#    @values = map escape($_),
+#	    ref($value) eq 'ARRAY' ? @$value : (ref($value) eq 'HASH' ? %$value : $value);
+#
+#    my(@constant_values);
+#    push(@constant_values,"domain=$domain") if $domain;
+#    push(@constant_values,"path=$path") if $path;
+#    push(@constant_values,"expires=".&expires($expires)) if $expires;
+#    push(@constant_values,'secure') if $secure;
+#
+#    my($key) = &escape($name);
+#    my($cookie) = join("=",$key,join("&",@values));
+#    return join("; ",$cookie,@constant_values);
+#}
+##cookie                 name value path domain secure expires
+ #                          ['NAME',['VALUE','VALUES'],'PATH','DOMAIN','SECURE','EXPIRES']
+
 sub cookie {
-    my($self,@p) = @_;
-    my($name,$value,$path,$domain,$secure,$expires) =
-	$self->rearrange(['NAME',['VALUE','VALUES'],'PATH','DOMAIN','SECURE','EXPIRES'],@p);
-    # if no value is supplied, then we retrieve the
-    # value of the cookie, if any.  For efficiency, we cache the parsed
-    # cookie in our state variables.
-    unless (defined($value)) {
+    my($self,@p,%p) = @_;
+    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+	my($k,$v,$lck);
+	%p = @p;
+	foreach $k (keys %p) {
+	    $lck = lc $k;
+	    $lck = substr($k,1) if substr($k,0,1) eq "-";
+	    $p{$lck} = $p{$k} if $lck ne $k;;
+	}
+        $p{value} ||= $p{values};
+     } else {
+	@p{qw/ name value path domain secure expires/} = @p;
+    }
+    unless (defined($p{value})) {
 	unless ($self->{'.cookies'}) {
 	    my(@pairs) = split("; ",$self->raw_cookie);
+            my($key);
 	    foreach (@pairs) {
-		my($key,$value) = split("=");
-		my(@values) = map unescape($_),split('&',$value);
+		($key,$p{value}) = split("=");
+		my(@values) = map unescape($_),split('&',$p{value});
 		$self->{'.cookies'}->{unescape($key)} = [@values];
 	    }
 	}
-	return wantarray ? @{$self->{'.cookies'}->{$name}} : $self->{'.cookies'}->{$name}->[0];
+	return wantarray ? @{$self->{'.cookies'}->{$p{name}}} : $self->{'.cookies'}->{$p{name}}->[0];
     }
     my(@values);
 
-    # Pull out our parameters.
     @values = map escape($_),
-           ref($value) eq 'ARRAY' ? @$value : (ref($value) eq 'HASH' ? %$value : $value);
+           ref($p{value}) eq 'ARRAY' ? @{$p{value}} : (ref($p{value}) eq 'HASH' ? %{$p{value}} : $p{value});
 
     my(@constant_values);
-    push(@constant_values,"domain=$domain") if $domain;
-    push(@constant_values,"path=$path") if $path;
-    push(@constant_values,"expires=".&expires($expires)) if $expires;
-    push(@constant_values,'secure') if $secure;
+    push(@constant_values,"domain=$p{domain}") if $p{domain};
+    push(@constant_values,"path=$p{path}") if $p{path};
+    push(@constant_values,"expires=".&expires($p{expires})) if $p{expires};
+    push(@constant_values,'secure') if $p{secure};
 
-    my($key) = &escape($name);
+    my($key) = &escape($p{name});
     my($cookie) = join("=",$key,join("&",@values));
     return join("; ",$cookie,@constant_values);
 }
@@ -1546,7 +1823,7 @@ sub previous_or_default {
 }
 
 sub read_from_cmdline {
-    require "shellwords.pl";
+    require Text::ParseWords;
     my($input,@words,@lines);
     my($query_string);
     if (@ARGV) {
@@ -1561,7 +1838,7 @@ sub read_from_cmdline {
     $input=~s/\\=/%3D/g;
     $input=~s/\\&/%26/g;
 
-    @words = &shellwords($input);
+    @words = Text::ParseWords::shellwords($input);
     if ("@words"=~/=/) {
 	$query_string = join('&',@words);
     } else {
@@ -1908,7 +2185,7 @@ CGI::XA - Clone of CGI.pm with less backwards compatibility and less namespace p
 =head1 SYNOPSIS
 
   use CGI::XA;
-  blah blah blah
+  # then follow the CGI.pm docs and see if it does the same.
 
 =head1 BE AWARE, THIS IS ALPHA SOFTWARE
 
@@ -1936,6 +2213,7 @@ accepts all the changes and continues with his excellent work.
     no exports
     no cgi-lib.pl compatibility
     no "Q" namespace
+    abandoned the rearrange method in several places
 
 =head2 BUGS
 
@@ -1959,3 +2237,485 @@ work. Responsibility is with Andreas König <andreas.koenig@mind.de>
 perl(1).
 
 =cut
+
+# Below you see a couple of autogenerated subroutines that are
+# intended to replace Lincoln's. They replace the rearrange method
+# completely with a much faster inlined construct
+
+# Here's a bench:
+
+# Benchmark: timing 1000 iterations of cginamed, cgipos, fastnamed, fastpos, xanamed, xapos...
+#   cginamed:  6 secs ( 5.85 usr  0.08 sys =  5.93 cpu)
+#     cgipos:  4 secs ( 3.43 usr  0.02 sys =  3.45 cpu)
+#  fastnamed:  4 secs ( 3.38 usr  0.01 sys =  3.39 cpu)
+#    fastpos:  3 secs ( 3.06 usr  0.01 sys =  3.07 cpu)
+#    xanamed:  7 secs ( 5.76 usr  0.09 sys =  5.85 cpu)
+#      xapos:  4 secs ( 3.27 usr  0.05 sys =  3.32 cpu)
+# 
+
+##hidden                 result value
+# #                          ['NAME',['DEFAULT','VALUE','VALUES'],['OVERRIDE','FORCE']]
+#sub hidden {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{default} ||= $p{value};
+#	 $p{default} ||= $p{values};
+#	 $p{override} ||= $p{force};
+#     } else {
+#	 @p{qw/ result value/} = @p;
+#    }
+#    my $do_override = 0;
+#    if ( substr($p[0],0,1) eq '-' || $self->use_named_parameters ) {
+#	 @value = ref($default) ? @{$default} : $default;
+#	 $do_override = $override;
+#    } else {
+#	 foreach ($default,$override,@other) {
+#	     push(@value,$_) if defined($_);
+#	 }
+#    }
+#    
+#    my @prev = $self->param($name);
+#    @value = @prev if !$do_override && @prev;
+#    $self->fastescapeHTML($name);
+#    foreach (@value) {
+#	 $self->fastescapeHTML($_);
+#	 push(@result,qq/<INPUT TYPE="hidden" NAME="$name" VALUE="$_">/);
+#    }
+#    return wantarray ? @result : join('',@result);
+#}
+##image_button           name src alignment other
+# #                          ['NAME','SRC','ALIGN']
+#sub image_button {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#     } else {
+#	 @p{qw/ name src alignment other/} = @p;
+#    }
+#    my($align) = $p{alignment} ? " ALIGN=\U$p{alignment}" : '';
+#    my($p{other}) = join(" ",@other);
+#    $self->fastescapeHTML($p{name});
+#    return qq/<INPUT TYPE="image" NAME="$p{name}" SRC="$p{src}"$align$p{other}>/;
+#}
+##isindex                action other
+# #                          ['ACTION']
+#sub isindex {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#     } else {
+#	 @p{qw/ action other/} = @p;
+#    }
+#    $p{action} = qq/ACTION="$p{action}"/ if $p{action};
+#    return "<ISINDEX $p{action} @other>";
+#}
+##oldtextfield           name default size maxlength override other
+# #                          ['NAME',['DEFAULT','VALUE'],'SIZE','MAXLENGTH',['OVERRIDE','FORCE']]
+#sub oldtextfield {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{default} ||= $p{value};
+#	 $p{override} ||= $p{force};
+#     } else {
+#	 @p{qw/ name default size maxlength override other/} = @p;
+#    }
+#    my $current = $p{override} ? $p{default} :
+#	 (defined($self->param($p{name})) ? $self->param($p{name}) : $p{default});
+#    $self->fastescapeHTML($current);
+#    $self->fastescapeHTML($p{name});
+#    my($s) = defined($p{size}) ? qq/ SIZE=$p{size}/ : '';
+#    my($m) = defined($p{maxlength}) ? qq/ MAXLENGTH=$p{maxlength}/ : '';
+#    my($p{other}) = join(" ",@other);
+#    return qq/<INPUT TYPE="text" NAME="$p{name}" VALUE="$current"$s$m$p{other}>/;
+#}
+##param                  name value other
+# #                          ['NAME',['DEFAULT','VALUE','VALUES']]
+#sub param {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{default} ||= $p{value};
+#	 $p{default} ||= $p{values};
+#     } else {
+#	 @p{qw/ name value other/} = @p;
+#    }
+#    my(@values);
+#	 if (substr($p[0],0,1) eq '-' || $self->use_named_parameters) {
+#	     @values = defined($p{value}) ? (ref($p{value}) eq 'ARRAY' ? @{$p{value}} : $p{value}) : ();
+#	 } else {
+#	     foreach ($p{value},@other) {
+#		 push(@values,$_) if defined($_);
+#	     }
+#	 }
+#	 
+#	 if (@values) {
+#	     $self->add_parameter($p{name});
+#	     $self->{$p{name}}=[@values];
+#	 }
+#    } else {
+#	 $p{name} = $p[0];
+#    }
+#    return () unless $p{name} && $self->{$p{name}};
+#    return wantarray ? @{$self->{$p{name}}} : $self->{$p{name}}->[0];
+#}
+##password_field         name default size maxlength override other
+# #                          ['NAME',['DEFAULT','VALUE'],'SIZE','MAXLENGTH',['OVERRIDE','FORCE']]
+#sub password_field {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{default} ||= $p{value};
+#	 $p{override} ||= $p{force};
+#     } else {
+#	 @p{qw/ name default size maxlength override other/} = @p;
+#    }
+#    my($current) =  $p{override} ? $p{default} :
+#	 (defined($self->param($p{name})) ? $self->param($p{name}) : $p{default});
+#    $self->fastescapeHTML($p{name});
+#    $self->fastescapeHTML($current);
+#    my($s) = defined($p{size}) ? qq/ SIZE=$p{size}/ : '';
+#    my($m) = defined($p{maxlength}) ? qq/ MAXLENGTH=$p{maxlength}/ : '';
+#    my($p{other}) = join(" ",@other);
+#    return qq/<INPUT TYPE="password" NAME="$p{name}" VALUE="$current"$s$m$p{other}>/;
+#}
+##popup_menu             name values default labels override other
+# #                          ['NAME',['VALUES','VALUE'],['DEFAULT','DEFAULTS'],'LABELS',['OVERRIDE','FORCE']]
+#sub popup_menu {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{values} ||= $p{value};
+#	 $p{default} ||= $p{defaults};
+#	 $p{override} ||= $p{force};
+#     } else {
+#	 @p{qw/ name values default labels override other/} = @p;
+#    }
+#    my($result,$selected);
+#    if (!$p{override} && defined($self->param($p{name}))) {
+#	 $selected = $self->param($p{name});
+#    } else {
+#	 $selected = $p{default};
+#    }
+#    $self->fastescapeHTML($p{name});
+#    my($p{other}) = join(" ",@other);
+#    my(@values) = $p{values} ? @$p{values} : $self->param($p{name});
+#    $result = qq/<SELECT NAME="$p{name}"$p{other}>\n/;
+#    foreach (@values) {
+#	 my($selectit) = defined($selected) ? ($selected eq $_ ? 'SELECTED' : '' ) : '';
+#	 my($label) = $_;
+#	 $label = $p{labels}->{$_} if defined($p{labels}) && $p{labels}->{$_};
+#	 my($value) = $_;
+#	 $self->fastescapeHTML($value);
+#	 $self->fastescapeHTML($label);
+#	 $result .= "<OPTION $selectit VALUE=\"$value\">$label\n";
+#    }
+#    $result .= "</SELECT>\n";
+#    return $result;
+#}
+##radio_group            name values default linebreak labels   rows columns rowheaders colheaders
+# #                      override nolabels other
+# #                          ['NAME',['VALUES','VALUE'],'DEFAULT','LINEBREAK','LABELS', 'ROWS',['COLUMNS',
+# #                          'COLS'], 'ROWHEADERS','COLHEADERS', ['OVERRIDE','FORCE'],'NOLABELS']
+#sub radio_group {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{values} ||= $p{value};
+#	 $p{columns} ||= $p{cols};
+#	 $p{override} ||= $p{force};
+#     } else {
+#	 @p{qw/ name values default linebreak labels   rows columns rowheaders colheaders override nolabels other/} = @p;
+#    }
+#    my($result,$checked);
+#    if (!$p{override} && defined($self->param($p{name}))) {
+#	 $checked = $self->param($p{name});
+#    } else {
+#	 $checked = $p{default};
+#    }
+#    
+#    $checked = $p{values}->[0] unless $checked;
+#    $self->fastescapeHTML($p{name});
+#    my(@elements);
+#    my(@values) = $p{values} ? @$p{values} : $self->param($p{name});
+#    my($p{other}) = join(" ",@other);
+#    foreach (@values) {
+#	 my($checkit) = $checked eq $_ ? ' CHECKED' : '';
+#	 my($break) = $p{linebreak} ? '<BR>' : '';
+#	 my($label)='';
+#	 unless (defined($p{nolabels}) && $p{nolabels}) {
+#	     $label = $_;
+#	     $label = $p{labels}->{$_} if defined($p{labels}) && $p{labels}->{$_};
+#	     $self->fastescapeHTML($label);
+#	 }
+#	 $self->fastescapeHTML($_);
+#	 push(@elements,qq/<INPUT TYPE="radio" NAME="$p{name}" VALUE="$_"$checkit$p{other}>${label} ${break}/);
+#    }
+#    return wantarray ? @elements : join('',@elements) unless $p{columns};
+#    return _tableize($p{rows},$p{columns},$p{rowheaders},$p{colheaders},@elements);
+#}
+##redirect               url target cookie other
+# #                          [['URI','URL'],'TARGET','COOKIE']
+#sub redirect {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{uri} ||= $p{url};
+#     } else {
+#	 @p{qw/ url target cookie other/} = @p;
+#    }
+#    $p{url} = $p{url} || $self->self_url;
+#    my(@o);
+#    foreach (@other) { push(@o,split("=")); }
+#    push(@o,
+#	  '-Status'=>'302 Found',
+#	  '-Location'=>$p{url},
+#	  '-URI'=>$p{url});
+#    push(@o,'-Target'=>$p{target}) if $p{target};
+#    push(@o,'-Cookie'=>$p{cookie}) if $p{cookie};
+#    return $self->header(@o);
+#}
+##reset                  label other
+# #                          ['NAME']
+#sub reset {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#     } else {
+#	 @p{qw/ label other/} = @p;
+#    }
+#    $self->fastescapeHTML($p{label});
+#    my($value) = defined($p{label}) ? qq/ VALUE="$p{label}"/ : '';
+#    my($p{other}) = join(' ',@other);
+#    return qq/<INPUT TYPE="reset"$value$p{other}>/;
+#}
+##scrolling_list         name values defaults size multiple labels override other
+# #                          ['NAME',['VALUES','VALUE'],['DEFAULTS','DEFAULT'], 'SIZE','MULTIPLE','LABELS',[
+# #                          'OVERRIDE','FORCE']]
+#sub scrolling_list {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{values} ||= $p{value};
+#	 $p{defaults} ||= $p{default};
+#	 $p{override} ||= $p{force};
+#     } else {
+#	 @p{qw/ name values defaults size multiple labels override other/} = @p;
+#    }
+#    my($result);
+#    my(@values) = $p{values} ? @$p{values} : $self->param($p{name});
+#    $p{size} = $p{size} || scalar(@values);
+#    my(%selected) = $self->previous_or_default($p{name},$p{defaults},$p{override});
+#    my($is_multiple) = $p{multiple} ? ' MULTIPLE' : '';
+#    my($has_size) = $p{size} ? " SIZE=$p{size}" : '';
+#    my($p{other}) = join(" ",@other);
+#    $self->fastescapeHTML($p{name});
+#    $result = qq/<SELECT NAME="$p{name}"$has_size$is_multiple$p{other}>\n/;
+#    foreach (@values) {
+#	 my($selectit) = $selected{$_} ? 'SELECTED' : '';
+#	 my($label) = $_;
+#	 $label = $p{labels}->{$_} if defined($p{labels}) && $p{labels}->{$_};
+#	 $self->fastescapeHTML($label);
+#	 my($value) = $_;
+#	 $self->fastescapeHTML($value);
+#	 $result .= "<OPTION $selectit VALUE=\"$value\">$label\n";
+#    }
+#    $result .= "</SELECT>\n";
+#    return $result;
+#}
+##start_html             title author base xbase script meta other
+# #                          ['TITLE','AUTHOR','BASE','XBASE','SCRIPT','META']
+#sub start_html {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#     } else {
+#	 @p{qw/ title author base xbase script meta other/} = @p;
+#    }
+#    $self->fastescapeHTML($p{title});
+#    $p{title} ||= 'Untitled Document';
+#    $self->fastescapeHTML($p{author});
+#    my(@result);
+#    push(@result,"<HTML><HEAD><TITLE>$p{title}</TITLE>");
+#    push(@result,"<LINK REV=MADE HREF=\"mailto:$p{author}\">") if $p{author};
+#    push(@result,"<BASE HREF=\"http://".$self->server_name.":".$self->server_port.$self->script_name."\">")
+#	 if $p{base} && !$p{xbase};
+#    push(@result,"<BASE HREF=\"$p{xbase}\">") if $p{xbase};
+#    if ($p{meta} && (ref($p{meta}) eq 'HASH')) {
+#	 foreach (keys %$p{meta}) { push(@result,qq(<META NAME="$_" CONTENT="$p{meta}->{$_}">)); }
+#    }
+#    push(@result,<<END) if $p{script};
+#<SCRIPT>
+#<!-- Hide script from HTML-compliant browsers
+#$p{script}
+#// End script hiding. -->
+#</SCRIPT>
+#END
+#    ;
+#    push(@result,"</HEAD><BODY @other>");
+#    return join("\n",@result);
+#}
+##start_multipart_form   method action enctype other
+# #                          ['METHOD','ACTION','ENCTYPE']
+#sub start_multipart_form {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#     } else {
+#	 @p{qw/ method action enctype other/} = @p;
+#    }
+#    $self->startform($p{method},$p{action},$p{enctype} || &MULTIPART,@other);
+#}
+##startform              method action enctype other
+# #                          ['METHOD','ACTION','ENCTYPE']
+#sub startform {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#     } else {
+#	 @p{qw/ method action enctype other/} = @p;
+#    }
+#    $p{method} = $p{method} || 'POST';
+#    $p{enctype} = $p{enctype} || &URL_ENCODED;
+#    $p{action} = $p{action} ? qq/ACTION="$p{action}"/ : '';
+#    return qq/<FORM METHOD="$p{method}" $p{action} ENCTYPE=$p{enctype} @other>\n/;
+#}
+#*start_form = \&startform;
+##submit                 label value other
+# #                          ['NAME',['VALUE','LABEL']]
+#sub submit {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{value} ||= $p{label};
+#     } else {
+#	 @p{qw/ label value other/} = @p;
+#    }
+#    $self->fastescapeHTML($p{label});
+#    $self->fastescapeHTML($p{value});
+#    my($name) = ' NAME=".submit"';
+#    $name = qq/ NAME="$p{label}"/ if $p{label};
+#    $p{value} = $p{value} || $p{label};
+#    my($val) = '';
+#    $val = qq/ VALUE="$p{value}"/ if defined($p{value});
+#    my($p{other}) = join(' ',@other);
+#    return qq/<INPUT TYPE="submit"$name$val$p{other}>/;
+#}
+##textarea               name default rows cols override other
+# #                          ['NAME',['DEFAULT','VALUE'],'ROWS',['COLS','COLUMNS'],['OVERRIDE','FORCE']]
+#sub textarea {
+#    my($self,@p,%p) = @_;
+#    if (@p && (substr($p[0],0,1) eq '-' || $self->use_named_parameters)) {
+#	 my($k,$v,$lck);
+#	 %p = @p;
+#	 foreach $k (keys %p) {
+#	     $lck = lc $k;
+#	     $lck = substr($k,1) if substr($k,0,1) eq "-";
+#	     $p{$lck} = $p{$k} if $lck ne $k;;
+#	 }
+#	 $p{default} ||= $p{value};
+#	 $p{cols} ||= $p{columns};
+#	 $p{override} ||= $p{force};
+#     } else {
+#	 @p{qw/ name default rows cols override other/} = @p;
+#    }
+#    my($current)= $p{override} ? $p{default} :
+#	 (defined($self->param($p{name})) ? $self->param($p{name}) : $p{default});
+#    $self->fastescapeHTML($p{name});
+#    $self->fastescapeHTML($current);
+#    my($r) = $p{rows} ? " ROWS=$p{rows}" : '';
+#    my($c) = $p{cols} ? " COLS=$p{cols}" : '';
+#    my($p{other}) = join(' ',@other);
+#    return qq{<TEXTAREA NAME="$p{name}"$r$c$p{other}>$current</TEXTAREA>};
+#}

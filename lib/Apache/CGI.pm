@@ -34,14 +34,18 @@ sub print {
 sub read_from_client {
     my($self, $fh, $buff, $len, $offset) = @_;
     my $r = $self->{'.req'} || Apache->request;
-    my $own_buffer;
-    my $ret = $r->read_client_block($own_buffer, $len);
-    # the return value is not correct in any case! I take the length instead as return value
-    $offset ? (substr($$buff,$offset) = $own_buffer) : ($$buff = $own_buffer);
-    my $own_len = length($own_buffer);
-#    my $fulllen = length($$buff);
-#    my $caller = "";#Carp::longmess();
-#    warn qq{ret [$ret] len [$len] offset [$offset] own_len [$own_len] fulllen [$fulllen] caller [$caller]\n};
+    my($own_buffer,$ret,$own_len);
+    if ($offset) {
+	$ret = $r->read_client_block($own_buffer, $len);
+	substr($$buff,$offset) = $own_buffer;
+        $own_len = length($own_buffer);
+    } else {
+	$ret = $r->read_client_block($$buff, $len);
+	$own_len = length($$buff);
+    }
+    my $fulllen = length($$buff);
+    my $caller = "";#Carp::longmess();
+    warn qq{ret [$ret] len [$len] offset [$offset] own_len [$own_len] fulllen [$fulllen] caller [$caller]\n};
     $own_len;
 }
 
