@@ -1,0 +1,68 @@
+package CGI::Switch;
+use Carp;
+use strict;
+use vars qw($VERSION @Pref);
+$VERSION = '0.01';
+@Pref = qw(Apache::CGI CGI::XS CGI); #default
+
+sub import {
+    my($self,@arg) = @_;
+    @Pref = @arg if @arg;
+}
+
+sub new {
+    shift;
+    my($file,$pack);
+    for $pack (@Pref) {
+	($file = $pack) =~ s|::|/|g;
+	eval { require "$file.pm"; };
+	if ($@) {
+	    next;
+	} else {
+#	    warn "Going to try $pack\->new\n";
+	    my $obj;
+	    eval {$obj = $pack->new(@_)};
+	    unless ($@) {
+		return $obj;
+	    }
+	}
+    }
+    Carp::croak "Couldn't load+construct any of @Pref\n";
+}
+
+1;
+__END__
+
+=head1 NAME
+
+CGI::Switch - Try more than one constructors and return the first object available
+
+=head1 SYNOPSIS
+
+ 
+ use CGISwitch;
+
+  -or-
+
+ use CGI::Switch This, That, CGI::XA, Foo, Bar, CGI;
+
+ my $q = new CGI::Switch;
+
+=head1 DESCRIPTION
+
+Per default the new() method tries to call new() in the three packages
+Apache::CGI, CGI::XA, and CGI. It returns the first CGI object it
+succeeds with.
+
+The import method allows you to set up the default order of the
+modules to be tested.
+
+=head1 SEE ALSO
+
+perl(1), Apache(3), CGI(3), CGI::XA(3)
+
+=head1 AUTHOR
+
+Andreas König E<lt>a.koenig@mind.deE<gt>
+
+=cut

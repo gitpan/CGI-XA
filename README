@@ -20,30 +20,29 @@ accepts all the changes and continues with his excellent work.
     no "Q" namespace
     inlined rearrange
 
-=head2 BUGS
-
-With this code I cannot use the file upload feature as expected. Only
-the first file upload within a the life of a server is guaranteed to
-work. Also ok are small files < 15k (haven't tested the exact limit
-where things go astray).
-
-=cut
-
 This code is faster than Lincoln's too:
 
-# Benchmark: timing 1000 iterations of cginamed, cgipos, fastnamed, fastpos, xanamed, xapos...
-#   cginamed:  6 secs ( 5.85 usr  0.08 sys =  5.93 cpu)
-#     cgipos:  4 secs ( 3.43 usr  0.02 sys =  3.45 cpu)
-#  fastnamed:  4 secs ( 3.38 usr  0.01 sys =  3.39 cpu)
-#    fastpos:  3 secs ( 3.06 usr  0.01 sys =  3.07 cpu)
-#    xanamed:  7 secs ( 5.76 usr  0.09 sys =  5.85 cpu)
-#      xapos:  4 secs ( 3.27 usr  0.05 sys =  3.32 cpu)
+Benchmark: timing 1000 iterations of cginamed, cgipos, fastnamed, fastpos...
+  cginamed:  7 secs ( 5.84 usr  0.08 sys =  5.92 cpu)
+    cgipos:  4 secs ( 3.48 usr  0.01 sys =  3.49 cpu)
+ fastnamed:  3 secs ( 3.17 usr  0.01 sys =  3.18 cpu)
+   fastpos:  3 secs ( 2.91 usr  0.01 sys =  2.92 cpu)
 
-And with the small test script in the eg/ directory (A CGI that runs a
-counter and a time and a textfield, I could run 100 loops in 23
-seconds on a Indy 100 MHz, not a terrific fast machine.
+The benchmark is done with the script in eg/bench.rearrange
+
+And with the small test script eg/rgy-cgi-pm2.pl (A CGI that runs a
+counter and a time and a textfield, I could run 100 loops in 12
+seconds on an Indy 100 MHz, not a terrific fast machine. The script on
+the other end of the connection is eg/rgy-cgi-pm2.client.
+
+CGI::Switch
+-----------
+
+With this very simple module you can run the identical script from
+your cgi-bin directory as a CGI script and from your perl alias script
+as a apache subroutine. See eg/rgy-cgi-pm2.pl for an example.
 
 
 Enjoy,
-Andreas, 18 Aug, 1996
+Andreas, 19 Aug, 1996
 

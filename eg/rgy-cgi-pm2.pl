@@ -1,13 +1,9 @@
-#!/user/local/bin/perl
+#!/usr/local/bin/perl
 
-#$Apache::Registry::Debug++;
-require Devel::Symdump;
-require Apache::CGI;
+require CGI::Switch;
 use File::CounterFile;
 
-my $q = new Apache::CGI;
-
-#$Laststash ||= Devel::Symdump->rnew();
+my $q = new CGI::Switch;
 
 $q->print(
    $q->header,	
@@ -23,20 +19,11 @@ $q->print(
 
 );
 
-#$Currentstash = Devel::Symdump->rnew();
 my $c = File::CounterFile->new("COUNTER2","00000000");
 my $id = $c->inc;
 
 $q->print(
 	  "<H4>", scalar(localtime()),"</H4>",
-#	  $Laststash->diff($Currentstash),
-#	  "<PRE>",
-#	  $q->dump,
 	  sprintf("Accessed %d times",$id),
 	  $q->end_html,
 	 );
-
-#$Laststash = $Currentstash;
-
-
-# $q->print(Apache::Debug::dump($q, 404));

@@ -1,12 +1,17 @@
 package Apache::CGI;
 require Apache;
 #require Apache::TieHandle;
-
-BEGIN { $CGI::XA::DefaultClass = 'Apache::CGI'; };
-require CGI::XA;
 #CGI->require_version(2.22);
 use vars qw(@ISA $VERSION);
-@ISA = qw(CGI::XA);
+
+eval {require CGI::XA;};
+if ($@) {
+    $CGI::DefaultClass = 'CGI';
+    require CGI;
+    @ISA = qw(CGI); # maybe 
+} else {
+    @ISA = qw(CGI::XA);
+}
 
 $VERSION = "0.11301-alpha";
 
@@ -34,19 +39,22 @@ sub print {
 sub read_from_client {
     my($self, $fh, $buff, $len, $offset) = @_;
     my $r = $self->{'.req'} || Apache->request;
-    my($own_buffer,$ret,$own_len);
+    my($own_buffer,$ret);
+    # A.K.: unfortunately I couldn't find a way without our own buffer
+    $ret = $r->read_client_block($own_buffer, $len);
+#    my $own_len = length($own_buffer);
     if ($offset) {
-	$ret = $r->read_client_block($own_buffer, $len);
-	substr($$buff,$offset) = $own_buffer;
-        $own_len = length($own_buffer);
+	substr($$buff,$offset) = substr($own_buffer,0,$ret);
     } else {
-	$ret = $r->read_client_block($$buff, $len);
-	$own_len = length($$buff);
+	$$buff = substr($own_buffer,0,$ret);
     }
-    my $fulllen = length($$buff);
-    my $caller = "";#Carp::longmess();
-    warn qq{ret [$ret] len [$len] offset [$offset] own_len [$own_len] fulllen [$fulllen] caller [$caller]\n};
-    $own_len;
+#    my $fulllen = length($$buff);
+#    my $caller = "";#Carp::longmess();
+#    warn qq{ret [$ret] len [$len] offset [$offset] own_len [$own_len] fulllen [$fulllen] caller [$caller]\n};
+#    my $obs = substr($own_buffer,0,15);
+#    my $obe = substr($own_buffer,-15);
+#    warn qq{own_buffer [$obs]...[$obe] his buff [$$buff]\n};
+    $ret;
 }
 
 sub new_MultipartBuffer {
@@ -93,6 +101,6 @@ perl(1), Apache(3), CGI(3)
 
 =head1 AUTHOR
 
-Doug MacEachern <dougm@osf.org>
+Doug MacEachern E<lt>dougm@osf.orgE<gt>, hacked over by Andreas König E<lt>a.koenig@mind.deE<gt>
 
 =cut
