@@ -1,0 +1,28 @@
+=head1 DESCRIPTION
+
+I have started with major hacks on top of Lincoln's version 2.23 of
+CGI.pm in order to get rid of both AUTOLOADING and uncontrolled
+global variables.
+
+I release this package as CGI::XA (which stands for "for Apache")
+for a limited audience as a test case.
+
+This software is alpha software and it is not clear if it will be
+supported for a longer time. My preferred solution would be, Lincoln
+accepts all the changes and continues with his excellent work.
+
+=head2 where are the main differences?
+
+    No AUTOLOAD
+    use strict clean
+    no exports
+    no cgi-lib.pl compatibility
+    no "Q" namespace
+
+=head2 BUGS
+
+With this code I cannot use the file upload feature as expected. Only
+the first file upload within a the life of a server is guaranteed to
+work. Also ok are small files < 2k (haven't tested the exact limit
+where things go astray).
+
